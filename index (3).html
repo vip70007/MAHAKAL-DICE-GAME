@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>🎲 Roll The Lucky Dice! – MAHAKAL</title>
+  <style>
+    body {
+      margin: 0;
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: radial-gradient(circle at top left, #1a1a2e, #16213e);
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      color: #fff;
+    }
+    .container {
+      text-align: center;
+      width: 92%;
+      max-width: 560px;
+    }
+    .heading {
+      font-size: 28px;
+      font-weight: 800;
+      color: #00ffcc;
+      text-shadow: 0 0 10px #00ffcc, 0 0 20px #00ccff, 0 0 30px #0099ff;
+      margin: 10px 0 18px;
+      letter-spacing: 0.5px;
+    }
+    .mobile-box {
+      margin-bottom: 16px;
+    }
+    .input {
+      padding: 12px 14px;
+      font-size: 16px;
+      border-radius: 12px;
+      border: none;
+      width: 70%;
+      max-width: 320px;
+      text-align: center;
+      outline: none;
+      box-shadow: 0 0 18px rgba(0,255,200,0.15) inset;
+      background: #0b1220;
+      color: #eafcff;
+    }
+    .btn {
+      background: linear-gradient(90deg, #00ffcc, #00ccff);
+      border: none;
+      padding: 12px 22px;
+      border-radius: 30px;
+      color: #0d0d0d;
+      font-weight: 800;
+      font-size: 16px;
+      cursor: pointer;
+      margin: 6px;
+      box-shadow: 0 8px 22px rgba(0,255,200,0.28);
+      transition: transform 0.15s ease, box-shadow 0.15s ease;
+    }
+    .btn:hover { transform: translateY(-1px) scale(1.04); box-shadow: 0 12px 26px rgba(0,255,200,0.45); }
+    .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+    .btn-ghost {
+      background: rgba(255,255,255,0.08);
+      color: #eafcff;
+      box-shadow: 0 0 0 rgba(0,0,0,0);
+    }
+    canvas {
+      border-radius: 20px;
+      box-shadow: 0px 0px 40px rgba(0, 255, 200, 0.5);
+      background: linear-gradient(145deg, #0f2027, #203a43, #2c5364);
+      margin: 10px 0 14px;
+      display: none; /* show after mobile ok */
+    }
+    .results {
+      margin-top: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      color: #00ffcc;
+      text-shadow: 0 0 10px rgba(0,255,200,0.6);
+      min-height: 24px;
+      display: none;
+    }
+    .msg { margin-top: 8px; color: #ff9aa2; font-size: 14px; min-height: 18px; }
+    footer {
+      margin-top: 12px;
+      font-size: 14px;
+      color: #9aa6b2;
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <h1 class="heading">🎲 Roll The Lucky Dice! – MAHAKAL</h1>
+
+    <!-- Mobile entry + music toggle -->
+    <div class="mobile-box" id="mobileBox">
+      <input class="input" type="tel" id="mobileInput" placeholder="Enter 10-digit Mobile Number" maxlength="10" />
+      <div>
+        <button class="btn" id="startBtn">Start Game</button>
+        <button class="btn btn-ghost" id="musicBtn" title="Toggle Background Music">🔈 Music Off</button>
+      </div>
+      <div class="msg" id="mobileMsg"></div>
+    </div>
+
+    <!-- Dice Area -->
+    <canvas id="diceCanvas" width="500" height="250"></canvas><br/>
+    <button class="btn" id="rollBtn" style="display:none;">🎲 Roll Dice</button>
+    <div class="results" id="result">Click Roll to Start</div>
+
+    <!-- Sounds -->
+    <!-- Roll SFX with dual sources -->
+    <audio id="rollSound" preload="auto">
+      <source src="https://actions.google.com/sounds/v1/foley/dice_roll.ogg" type="audio/ogg">
+      <source src="https://www.soundjay.com/misc/sounds/dice-roll-1.mp3" type="audio/mpeg">
+    </audio>
+    <!-- Background music (loop) -->
+    <audio id="bgMusic" preload="auto" loop>
+      <source src="https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3" type="audio/mpeg">
+    </audio>
+
+    <footer>Powered by MAHAKAL</footer>
+  </div>
+
+  <script>
+    const canvas = document.getElementById("diceCanvas");
+    const ctx = canvas.getContext("2d");
+    const resultEl = document.getElementById("result");
+    const rollBtn = document.getElementById("rollBtn");
+    const startBtn = document.getElementById("startBtn");
+    const mobileInput = document.getElementById("mobileInput");
+    const mobileMsg = document.getElementById("mobileMsg");
+    const rollSound = document.getElementById("rollSound");
+    const bgMusic = document.getElementById("bgMusic");
+    const musicBtn = document.getElementById("musicBtn");
+
+    const SEVEN_DAYS = 7 * 24 * 60 * 60 * 1000;
+
+    let currentMobile = null;
+    let musicOn = false;
+    let isRolling = false;
+
+    // --- Audio helpers ---
+    async function startBgMusic() {
+      try {
+        bgMusic.volume = 0.35;
+        await bgMusic.play();
+        musicOn = true;
+        musicBtn.textContent = "🔊 Music On";
+      } catch (err) {
+        // Autoplay blocked until user clicks Music button
+        console.log("Music autoplay blocked:", err);
+      }
+    }
+    async function toggleMusic() {
+      if (!musicOn) {
+        try {
+          bgMusic.volume = 0.35;
+          await bgMusic.play();
+          musicOn = true;
+          musicBtn.textContent = "🔊 Music On";
+        } catch (e) {
+          bgMusic.load();
+          try { await bgMusic.play(); musicOn = true; musicBtn.textContent = "🔊 Music On"; } catch(e2){}
+        }
+      } else {
+        bgMusic.pause();
+        musicOn = false;
+        musicBtn.textContent = "🔈 Music Off";
+      }
+    }
+    function playRollSfx() {
+      rollSound.currentTime = 0;
+      rollSound.play().catch(() => { rollSound.load(); rollSound.play().catch(()=>{}); });
+    }
+
+    musicBtn.addEventListener("click", toggleMusic);
+
+    // --- UI + Dice ---
+    function drawDie(x, y, size, value, angle = 0) {
+      ctx.save();
+      ctx.translate(x + size / 2, y + size / 2);
+      ctx.rotate(angle);
+      ctx.translate(-size / 2, -size / 2);
+
+      ctx.fillStyle = "#111827";
+      ctx.strokeStyle = "#00ffcc";
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      if (ctx.roundRect) ctx.roundRect(0, 0, size, size, 20);
+      else { // fallback
+        ctx.moveTo(20,0); ctx.lineTo(size-20,0); ctx.quadraticCurveTo(size,0,size,20);
+        ctx.lineTo(size,size-20); ctx.quadraticCurveTo(size,size,size-20,size);
+        ctx.lineTo(20,size); ctx.quadraticCurveTo(0,size,0,size-20);
+        ctx.lineTo(0,20); ctx.quadraticCurveTo(0,0,20,0); ctx.closePath();
+      }
+      ctx.fill(); ctx.stroke();
+
+      ctx.fillStyle = "#fff";
+      const pip = (px, py) => { ctx.beginPath(); ctx.arc(px, py, size/10, 0, Math.PI*2); ctx.fill(); };
+
+      const mid = size/2, left = size/4, right = (3*size)/4, top = size/4, bottom = (3*size)/4;
+      switch (value) {
+        case 1: pip(mid, mid); break;
+        case 2: pip(left, top); pip(right, bottom); break;
+        case 3: pip(left, top); pip(mid, mid); pip(right, bottom); break;
+        case 4: pip(left, top); pip(left, bottom); pip(right, top); pip(right, bottom); break;
+        case 5: pip(left, top); pip(left, bottom); pip(right, top); pip(right, bottom); pip(mid, mid); break;
+        case 6: pip(left, top); pip(left, mid); pip(left, bottom); pip(right, top); pip(right, mid); pip(right, bottom); break;
+      }
+      ctx.restore();
+    }
+
+    function formatRemaining(ms) {
+      const total = Math.max(0, Math.floor(ms/1000));
+      const d = Math.floor(total / 86400);
+      const h = Math.floor((total % 86400)/3600);
+      const m = Math.floor((total % 3600)/60);
+      return `${d}d ${h}h ${m}m`;
+    }
+
+    function animateRoll(final1, final2, onDone) {
+      const duration = 5000; // 5 sec spin + shake
+      const start = performance.now();
+
+      function frame(now) {
+        const elapsed = now - start;
+        ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+        // random faces while spinning
+        const temp1 = Math.floor(Math.random() * 6) + 1;
+        const temp2 = Math.floor(Math.random() * 6) + 1;
+        const angle = Math.sin(elapsed / 100) * 0.5; // spin+shake
+
+        drawDie(80, 50, 120, temp1, angle);
+        drawDie(300, 50, 120, temp2, -angle);
+
+        if (elapsed < duration) {
+          requestAnimationFrame(frame);
+        } else {
+          ctx.clearRect(0, 0, canvas.width, canvas.height);
+          drawDie(80, 50, 120, final1);
+          drawDie(300, 50, 120, final2);
+          onDone && onDone();
+        }
+      }
+      frame(start);
+    }
+
+    // --- Flow: Start -> Validate mobile -> show dice controls ---
+    startBtn.addEventListener("click", async () => {
+      const mob = (mobileInput.value || "").trim();
+      if (!/^\d{10}$/.test(mob)) {
+        mobileMsg.textContent = "❌ Please enter a valid 10-digit mobile number.";
+        return;
+      }
+      const key = "played_" + mob;
+      const last = parseInt(localStorage.getItem(key) || "0", 10);
+      const now = Date.now();
+
+      if (last && (now - last) < SEVEN_DAYS) {
+        const remaining = SEVEN_DAYS - (now - last);
+        mobileMsg.textContent = `❌ Try after 7 days (Next roll in ${formatRemaining(remaining)})`;
+        return;
+      }
+
+      // Pass gate: show dice UI
+      currentMobile = mob;
+      mobileMsg.textContent = "";
+      canvas.style.display = "block";
+      rollBtn.style.display = "inline-block";
+      resultEl.style.display = "block";
+
+      // Try to start background music on this user gesture
+      await startBgMusic();
+    });
+
+    // --- Roll ---
+    rollBtn.addEventListener("click", async () => {
+      if (isRolling) return;
+      if (!currentMobile) {
+        mobileMsg.textContent = "ℹ️ Enter mobile number and press Start Game first.";
+        return;
+      }
+
+      // re-check 7-day lock at roll time as well
+      const key = "played_" + currentMobile;
+      const last = parseInt(localStorage.getItem(key) || "0", 10);
+      const now = Date.now();
+      if (last && (now - last) < SEVEN_DAYS) {
+        const remaining = SEVEN_DAYS - (now - last);
+        resultEl.textContent = `❌ Try after 7 days (Next roll in ${formatRemaining(remaining)})`;
+        return;
+      }
+
+      // sound + music
+      playRollSfx();
+      if (!musicOn) await startBgMusic();
+
+      isRolling = true;
+      const d1 = Math.floor(Math.random() * 6) + 1;
+      const d2 = Math.floor(Math.random() * 6) + 1;
+
+      animateRoll(d1, d2, () => {
+        const sum = d1 + d2;
+        resultEl.textContent = `🎲 Die A: ${d1} | 🎲 Die B: ${d2} | ➡️ Sum: ${sum}`;
+        // Lock this number for 7 days
+        localStorage.setItem(key, Date.now().toString());
+        // Disable further rolls in this session too
+        rollBtn.disabled = true;
+        const remaining = SEVEN_DAYS;
+        setTimeout(() => {
+          resultEl.textContent += `  •  ⏳ Next roll in ${formatRemaining(remaining)}`;
+        }, 300);
+        isRolling = false;
+      });
+    });
+  </script>
+</body>
+</html>
